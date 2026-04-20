@@ -20,8 +20,8 @@ AWS_KWARGS = dict(
 )
 
 # ── AWS clients ───────────────────────────────────────────────────────────────
-sqs    = boto3.client("sqs",      **AWS_KWARGS)
-dynamo = boto3.resource("dynamodb", **AWS_KWARGS)
+sqs    = boto3.client("sqs",         **AWS_KWARGS)
+dynamo = boto3.resource("dynamodb",  **AWS_KWARGS)
 
 
 # ── DynamoDB setup ────────────────────────────────────────────────────────────
@@ -35,9 +35,8 @@ def get_or_create_table():
     log.info("Creating table '%s'...", TABLE_NAME)
     table = dynamo.create_table(
         TableName=TABLE_NAME,
-        # message_id (SQS MessageId) is the partition key — guaranteed unique
-        KeySchema=[{"AttributeName": "message_id", "KeyType": "HASH"}],
-        AttributeDefinitions=[{"AttributeName": "message_id", "AttributeType": "S"}],
+        KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}],
+        AttributeDefinitions=[{"AttributeName": "id", "AttributeType": "N"}],
         BillingMode="PAY_PER_REQUEST",
     )
     table.wait_until_exists()
@@ -92,11 +91,11 @@ def transform(data: dict):
             return None
 
         return {
-            "id":   data["id"],     # business id (kept as attribute, not the key)
+            "id":   data["id"],
             "mail": mail,
             "name": name,
             "trip": {
-                "depaure":     departure,  # typo kept as-is to match spec
+                "departure":     departure,
                 "destination": dest,
                 "start_date":  start,
                 "end_date":    end,
@@ -126,8 +125,7 @@ def run(table):
             break
 
         for msg in messages:
-            body       = msg["Body"]
-            message_id = msg["MessageId"]  # unique SQS identifier
+            body = msg["Body"]
 
             # ── Parse ────────────────────────────────────────────────────────
             try:
@@ -145,18 +143,15 @@ def run(table):
                 sqs.delete_message(QueueUrl=QUEUE_URL, ReceiptHandle=msg["ReceiptHandle"])
                 continue
 
-            # ── Add unique key ────────────────────────────────────────────────
-            record["message_id"] = message_id
-
             # ── Load ─────────────────────────────────────────────────────────
             try:
                 table.put_item(Item=record)
-                log.info("Saved message_id=%s | id=%s (%s -> %s)",
-                         message_id, record["id"],
-                         record["trip"]["depaure"], record["trip"]["destination"])
+                log.info("Saved id=%s | %s (%s -> %s)",
+                         record["id"], record["name"],
+                         record["trip"]["departure"], record["trip"]["destination"])
                 processed += 1
             except Exception as exc:
-                log.error("DynamoDB write failed for message_id=%s: %s", message_id, exc)
+                log.error("DynamoDB write failed for id=%s: %s", record.get("id"), exc)
                 errors += 1
                 continue  # don't delete — leave in queue to retry
 

@@ -1,124 +1,257 @@
-# SQS Data Pipeline
+# SQS Data Pipeline — Documentation
 
-In this exercise, you are expected to develop a simple ETL tool. The tool should consume messages from an AWS SQS queue, 
-convert events to defined structure below, then store them in database
+## Overview
 
-Expectations from you are:
+This tool is a simple ETL (Extract, Transform, Load) pipeline that:
+1. **Extracts** messages from an AWS SQS queue (via LocalStack)
+2. **Transforms** them into a unified structure
+3. **Loads** them into a DynamoDB table (via LocalStack)
 
-* Research and understand how AWS SQS works on a basic level
-* Submit a working solution
-* Solve problems that might occur during the setup
-* Provide documentation (explained in `Documentation` section)
+---
 
-## Localstack
-https://github.com/localstack/localstack
+## Language Choice
 
-Instead of using an actual AWS account, you will use a localstack implementation to imitate AWS services. Localstack
-uses the same API with AWS services, you can use the same API by targeting the local endpoint (stated in the
-tool documentation).
+**Python 3** was chosen for the following reasons:
+- `boto3` (AWS SDK for Python) is mature, well-documented, and makes SQS/DynamoDB integration straightforward
+- Python is concise and readable, making the transformation logic easy to follow and maintain
+- Rapid development — no compilation step needed
+- Widely used in data engineering pipelines
 
-## Installation Requirements
-- [docker](https://www.docker.com/get-started)
-- [docker-compose](https://docs.docker.com/compose/install/)
+---
 
-## Input
+## Project Structure
 
-### Environment setup
-
-In this exercise you have three files:
-- `docker-compose.yml` 
-- `message_generator`
-- `README.md`
-
-To setup the localstack environment, run:
-```bash
-$ docker-compose up
+```
+data-engineer-assignment/
+├── Makefile               # Build and run automation
+├── prepare.sh             # Builds Go binaries and sets up dist/
+├── message_generator.go   # Generates messages and pushes to SQS
+├── docker-compose.yml     # LocalStack setup (SQS, S3, DynamoDB)
+├── DOC.md                 # Original assignment document
+├── Dockerfile         # Docker image for the ETL tool
+├── transform.py       # ETL pipeline script
+└── dist/
+    ├── docker-compose.yml # LocalStack config (copied from root)
+    ├── README.md          # Assignment doc + build date
+    └── message-generators/
+        ├── darwin         # macOS binary
+        ├── linux          # Linux binary
+        └── windows.exe    # Windows binary
 ```
 
-To setup the test case, you can run `message-generator`s appropriate for your environment. Right now darwin, linux, and
-windows OSs are supported:
+---
+
+## Build Requirements
+
+- [Docker](https://www.docker.com/get-started)
+- [Docker Compose](https://docs.docker.com/compose/install/)
+- [Go](https://go.dev/dl/) (to compile message generator binaries)
+- [GNU Make](https://www.gnu.org/software/make/)
+- Python 3.9+ with `boto3` installed (`pip install boto3`)
+
+---
+
+## Environment Configuration
+
+The following AWS credentials are required for LocalStack. Since LocalStack does not validate credentials, any non-empty values will work:
+
 ```bash
-$ ls message-generators
-darwin       linux        windows.exe
-$ ./message-generators/linux    # for linux
-$ ./message-generators/darwin   # for macos
+export AWS_ACCESS_KEY_ID=test
+export AWS_SECRET_ACCESS_KEY=test
+export AWS_DEFAULT_REGION=ap-south-1
 ```
 
-**P.S.**: You can run `message-generator` to generate more messages.
+These are already set in the `Makefile` via `export` so no manual setup is needed.
 
-Follow the outputs to configure your tool.
+LocalStack runs on:
+- **Endpoint:** `http://localhost:4566`
+- **Region:** `ap-south-1`
+- **Services:** SQS, S3, DynamoDB
 
+---
 
-### Event structure
+## How to Build
 
-You will receive events with different structures. You need to convert them into below structure:
+### Option 1 — Using Make (recommended)
 
+```bash
+make install
+```
+
+This runs `prepare.sh` which:
+- Compiles `message_generator.go` into binaries for Linux, macOS, and Windows
+- Copies `docker-compose.yml` and `DOC.md` into `dist/`
+
+### Option 2 — Build Docker image manually
+
+```bash
+docker build -t etl-pipeline .
+```
+
+---
+
+## How to Run
+
+### Full pipeline with one command
+
+```bash
+make all
+```
+
+This runs the following steps in order:
+
+| Step | Command | Description |
+|------|---------|-------------|
+| 1 | `make install` | Compiles Go binaries, sets up `dist/` |
+| 2 | `make up` | Starts LocalStack via docker-compose |
+| 3 | `make generate` | Runs message generator to push messages to SQS |
+| 4 | `make build` | Builds the ETL Docker image |
+| 5 | `make run` | Runs the ETL pipeline container |
+
+### Run individual steps
+
+```bash
+make install    # Build Go binaries
+make up         # Start LocalStack
+make generate   # Push messages to SQS queue
+make build      # Build ETL Docker image
+make run        # Run ETL pipeline
+```
+
+---
+
+## How to Use
+
+### Running the ETL tool directly (without Docker)
+
+```bash
+pip install boto3
+python transform.py
+```
+
+### Running via Docker
+
+```bash
+docker run --network host etl-pipeline
+```
+
+### Verifying data in DynamoDB
+
+```bash
+aws --endpoint-url=http://localhost:4566 \
+    --region ap-south-1 \
+    dynamodb scan \
+    --table-name trips
+```
+
+Or using Python:
+
+```python
+import boto3, json
+
+dynamo = boto3.resource("dynamodb",
+    endpoint_url="http://localhost:4566",
+    region_name="ap-south-1",
+    aws_access_key_id="test",
+    aws_secret_access_key="test",
+)
+
+items = dynamo.Table("trips").scan()["Items"]
+print(f"Total records: {len(items)}")
+for item in items:
+    print(json.dumps(item, indent=2, default=str))
+```
+
+---
+
+## Input Message Formats
+
+The message generator produces messages in two formats (plus malformed messages):
+
+### Format A — Route array
 ```json
 {
-    "id": 1,
-    "mail":"aaa@gmail.com",
-    "name":"AAA SSS",
-    "trip": {
-        "depaure": "A",
-        "destination": "D",
-        "start_date":"2022-10-10 12:15:00",
-        "end_date": "2022-10-10 13:55:00"
-    }
+  "id": 3,
+  "mail": "aaa@gmail.com",
+  "name": "Mahmoud",
+  "surname": "Mahmoudi",
+  "route": [
+    {"from": "B", "to": "C", "duration": 15, "started_at": "10/10/2022 11:10:00"},
+    {"from": "C", "to": "E", "duration": 10, "started_at": "10/10/2022 11:17:15"}
+  ]
 }
 ```
 
-All values here are examples, you need to get actual values from the queue messages.
-
-## Output
-
-### Persisting
-You need to persist the converted events. The tool should be able to run multiple times, just like any other
-commandline tool. The queue should be empty after you finish processing all events.
-
-
-Please setup a local database, that can be reproducible in our systems as well (both Linux and Darwin). We prefer to have a `docker run`
-command to run the database of your choice.
-
-### Language
-Please prepare your solution with your language of choice. However, you are encouraged to use one of:
-
-- Java/Kotlin/Scala
-- Go
-- Python 3
-
-
-Please motivate your choice of programming language in the documentation.
-
-### Documentation
-You are expected to provide the source code and a documentation of the tool. Please add a `DOCUMENTATION.md` file in
-you submission which includes:
-
-- How to build the tool and build requirements
-- How to configure the environment (if necessary)
-- How to run the tool
-- How to use the tool (options, parameters, etc.)
-- Challenges while solving the problem
-
-### Submission format
-Please open a Pull/Merge request to this repository.
-
+### Format B — Locations array with Unix timestamps
+```json
+{
+  "id": 5,
+  "mail": "mmm@nocompany.com",
+  "name": "Kacper",
+  "surname": "Kacperian",
+  "locations": [
+    {"location": "F", "timestamp": 1667999699},
+    {"location": "G", "timestamp": 1668975653}
+  ]
+}
 ```
-$ tree .
-├── DOCUMENTATION.md
-└── src
-    └── ...
+
+### Malformed messages
+Messages with body `"malformed"` or invalid JSON are skipped and deleted from the queue.
+
+---
+
+## Output Structure
+
+All messages are transformed into the following unified structure and saved to DynamoDB:
+
+```json
+{
+  "message_id": "e43ec425-ffc9-4f1a-ae2f-de006eecc577",
+  "id": 3,
+  "mail": "aaa@gmail.com",
+  "name": "Mahmoud Mahmoudi",
+  "trip": {
+    "depature": "B",
+    "destination": "E",
+    "start_date": "2022-10-10 11:10:00",
+    "end_date": "2022-10-10 11:35:00"
+  }
+}
 ```
-Please include DOCUMENTATION.md, source code, and build scripts if necessary to your submission.
 
-Your submission should be able to run with a single command. You can add a `run.sh` script that runs required commands if needed. See Bonus Points #3.
+**Note:** `message_id` (SQS MessageId) is used as the DynamoDB partition key to ensure uniqueness. The business `id` field is stored as a regular attribute. This handles cases where multiple messages share the same `id`.
 
---
+---
 
-Your program will be judged on the quality of the code as well as the correctness of the output.
+## Transformation Logic
 
-## Bonus points
-1. Include your database setup to `docker-compose` setup as container.
-2. Make your tool runnable by docker. Provide running instructions.
-3. Prepare a Makefile that builds your submission and runs it.
+| Input field | Output field | Notes |
+|-------------|-------------|-------|
+| `name + surname` | `name` | Joined with a space |
+| `route[0].from` or `locations[0].location` | `trip.depature` | First leg departure |
+| `route[-1].to` or `locations[-1].location` | `trip.destination` | Last leg destination |
+| `route[0].started_at` or `locations[0].timestamp` | `trip.start_date` | Normalised to `YYYY-MM-DD HH:MM:SS` |
+| `route[0].started_at + sum(durations)` or `locations[-1].timestamp` | `trip.end_date` | Calculated from leg durations or last timestamp |
 
---
+---
+
+## Challenges
+
+1. **Multiple message formats** — The queue contains messages in different structures. The transformer handles each format explicitly and skips unrecognised ones gracefully.
+
+2. **Duplicate messages** — Messages can share the same business `id` (e.g., same person with different workplaces). Using the SQS `MessageId` as the DynamoDB partition key ensures every message is stored uniquely.
+
+3. **Windows compatibility** — Running shell scripts and Make on Windows required using Git Bash. Path handling differences between Windows and Unix required careful attention in the Makefile.
+
+4. **Docker networking** — Connecting a Docker container to LocalStack running on the host required using `--network host` and `host.docker.internal` as the endpoint instead of `localhost`.
+
+5. **Date format normalisation** — The `route` format uses `DD/MM/YYYY HH:MM:SS` while the output requires `YYYY-MM-DD HH:MM:SS`. A parser handles both formats automatically.
+
+---
+
+## Bonus Points Completed
+
+- [x] **#1** — Database (DynamoDB) is included in the LocalStack `docker-compose.yml` setup
+- [x] **#2** — ETL tool is Dockerized with a `Dockerfile` and runs via `docker run`
+- [x] **#3** — `Makefile` builds and runs the full pipeline with `make all`

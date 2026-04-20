@@ -18,4 +18,3 @@ run:
 	docker run --network host etl-pipeline
 
 all: install up generate build run
-	
