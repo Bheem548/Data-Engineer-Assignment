@@ -162,6 +162,10 @@ for item in items:
     print(json.dumps(item, indent=2, default=str))
 ```
 
+Or we can run testing.py Script. 
+```python
+python3 testing.py
+```
 ---
 
 ## Input Message Formats
@@ -207,7 +211,6 @@ All messages are transformed into the following unified structure and saved to D
 
 ```json
 {
-  "message_id": "e43ec425-ffc9-4f1a-ae2f-de006eecc577",
   "id": 3,
   "mail": "aaa@gmail.com",
   "name": "Mahmoud Mahmoudi",
@@ -219,8 +222,6 @@ All messages are transformed into the following unified structure and saved to D
   }
 }
 ```
-
-**Note:** `message_id` (SQS MessageId) is used as the DynamoDB partition key to ensure uniqueness. The business `id` field is stored as a regular attribute. This handles cases where multiple messages share the same `id`.
 
 ---
 
@@ -240,7 +241,7 @@ All messages are transformed into the following unified structure and saved to D
 
 1. **Multiple message formats** — The queue contains messages in different structures. The transformer handles each format explicitly and skips unrecognised ones gracefully.
 
-2. **Duplicate messages** — Messages can share the same business `id` (e.g., same person with different workplaces). Using the SQS `MessageId` as the DynamoDB partition key ensures every message is stored uniquely.
+2. **Duplicate messages** — Messages are overwritten if same id appears again with the latest values.
 
 3. **Windows compatibility** — Running shell scripts and Make on Windows required using Git Bash. Path handling differences between Windows and Unix required careful attention in the Makefile.
 
@@ -254,4 +255,5 @@ All messages are transformed into the following unified structure and saved to D
 
 - [x] **#1** — Database (DynamoDB) is included in the LocalStack `docker-compose.yml` setup
 - [x] **#2** — ETL tool is Dockerized with a `Dockerfile` and runs via `docker run`
-- [x] **#3** — `Makefile` builds and runs the full pipeline with `make all`Date: Mon, Apr 20, 2026 11:21:06 AM
+- [x] **#3** — `Makefile` builds and runs the full pipeline with `make all`
+Date: Mon, Apr 20, 2026 12:10:31 PM
