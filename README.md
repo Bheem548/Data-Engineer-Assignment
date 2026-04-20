@@ -162,9 +162,9 @@ for item in items:
     print(json.dumps(item, indent=2, default=str))
 ```
 
-Or we can run testing.py Script
+Or we can run testing.py Script. 
 ```python
-python testing.py
+python3 testing.py
 ```
 ---
 
