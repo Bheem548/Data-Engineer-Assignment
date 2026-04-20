@@ -163,7 +163,8 @@ for item in items:
 ```
 
 Or we can run testing.py Script
-```python testing.py
+```python
+python testing.py
 ```
 ---
 
